@@ -1,0 +1,141 @@
+local initialX, initialY, initialZ = 0, 0, 0
+local initialDirection = "north"
+
+local x, y, z
+local startX, startY, startZ
+
+local directions = {[0] = "north", [1] = "east", [2] = "south", [3] = "west", north = 0, east = 1, south = 2, west = 3}
+local currentDirection
+
+local firstColumnOffset = 3
+local offsetIncrease = 5
+local columnWidth = 4
+local columnCount = 14
+local figureHeight = 8
+local margin = 1
+local towerHeight = 12
+local towerWidth = columnWidth * columnCount + margin * 2
+
+local solidBlock = "quartz_block"
+local glassBlock = "mana_glass"
+local chest = "chest"
+local talismanBlockSlot = {[solidBlock] = 1, [glassBlock] = 9}
+local blockSlot = {[solidBlock] = 2, [glassBlock] = 10, [chest] = 16}
+
+local function getLocation()
+	repeat
+		x, y, z = gps.locate(1)
+	until x
+end
+
+local function getActionDirection(direction)
+	return not direction and "" or direction == "Forward" and "" or direction
+end
+
+local function safeBreakBlock(direction)
+	local breakBlock = turtle["dig"..getActionDirection(direction)]
+	local inspect = turtle["inspect"..getActionDirection(direction)]
+
+	local success, inspectResult = inspect()
+	
+	if success and not string.match(inspectResult.name, "turtle") then
+		if string.match(inspectResult.name, solidBlock) then
+			turtle.select(blockSlot[solidBlock])
+		elseif string.match(inspectResult.name, glassBlock) then
+			turtle.select(blockSlot[glassBlock])
+		else
+			error("this block shouldn't be here")
+		end
+		
+		if turtle.getItemCount() == 64 then
+			turtle.drop(1)
+		end
+		
+		breakBlock()
+	end
+end
+
+local function go(direction, times)
+	local move = turtle[direction and string.lower(direction) or "forward"]
+	
+	for i = 1, times or 1 do
+		while not move() do
+			safeBreakBlock(direction)
+		end
+	end
+end
+
+local function place(direction)
+	local placeBlock = turtle["place"..getActionDirection(direction)]
+	local compare = turtle["compare"..getActionDirection(direction)]
+	local slot = turtle.getSelectedSlot()
+
+	if compare() then return end
+
+	while not placeBlock() do
+		safeBreakBlock(direction)
+		turtle.select(slot)
+	end
+end
+
+local function getDirectionIfTurn(turnNumber)
+	return directions[(directions[currentDirection] + turnNumber) % 4]
+end
+
+local function getTurtleDirection()
+	local success, inspectResult = turtle.inspectUp()
+	
+	if not success or not string.match(inspectResult.name, "chest") then
+		turtle.select(16)
+		safeBreakBlock("Up")
+		turtle.select(16)
+		place("Up")
+		
+		success, inspectResult = turtle.inspectUp()
+		
+		if not success or not string.match(inspectResult.name, "chest") then
+			error("can't define turtle direction")
+		end
+	end
+	
+	turtle.select(16)
+	turtle.digUp()
+
+	currentDirection = directions[(directions[inspectResult.state.facing] + 2) % 4]
+end
+
+getLocation()
+y = y - 1
+
+getTurtleDirection()
+
+if initialDirection == "north" or initialDirection == "south" then
+	initialX, initialZ = initialZ, initialX	
+	x, z = z, x
+end
+
+startX = math.abs(x - initialX)
+startY = math.abs(y - initialY)
+startZ = math.abs(z - initialZ)
+
+if startX == towerWidth - 1 and getDirectionIfTurn(-1) == initialDirection then
+	if startZ == 0 then
+		go()
+	end
+	
+	turtle.turnRight()
+
+	startZ = 1
+elseif startX == 0 and getDirectionIfTurn(1) == initialDirection then
+	if startZ == 1 then
+		go()
+	end
+	
+	turtle.turnRight()
+	go("Up")
+	
+	startY = startY + 1
+	startZ = 0
+end
+
+shell.run("tower", startX, startY, startZ)
