@@ -1,0 +1,194 @@
+local startX, startY, startZ = 0, 0, 0
+
+local firstColumnOffset = 3
+local offsetIncrease = 5
+local columnWidth = 4
+local columnCount = 14
+local figureHeight = 8
+local margin = 1
+local towerHeight = 110
+local towerWidth = columnWidth * columnCount + margin * 2
+
+local solidBlock = "quartz_block"
+local glassBlock = "mana_glass"
+local chest = "chest"
+local talismanBlockSlot = {[solidBlock] = 1, [glassBlock] = 9}
+local blockSlot = {[solidBlock] = 2, [glassBlock] = 10, [chest] = 16}
+local blockCount = 
+{
+	[solidBlock] = talismanBlockSlot[glassBlock] - blockSlot[solidBlock],
+	[glassBlock] = blockSlot[chest] - blockSlot[glassBlock]
+}
+
+local args = {...}
+
+local figure = 
+{
+	[8] = {'#', '#', '#', '#'},
+	[7] = {'#', '@', '@', '#'},
+	[6] = {'#', '@', '@', '#'},
+	[5] = {'#', '@', '@', '#'},
+	[4] = {'#', '@', '@', '#'},
+	[3] = {'#', '#', '#', '#'},
+	[2] = {'@', '@', '@', '@'},
+	[1] = {'@', '@', '@', '@'} 
+}
+
+local function checkItem(name, slot)
+	local item = turtle.getItemDetail(slot)
+	return item and string.match(item.name, name)
+end
+
+local function findItemSlot(name, slot)
+	for curSlot = slot or 1, 16 do
+		if checkItem(name, curSlot) then
+			return curSlot
+		end
+	end
+	
+	return nil
+end
+
+local function getActionDirection(direction)
+	return not direction and "" or direction == "Forward" and "" or direction
+end
+
+local function safeBreakBlock(direction)
+	local breakBlock = turtle["dig"..getActionDirection(direction)]
+	local inspect = turtle["inspect"..getActionDirection(direction)]
+
+	local success, inspectResult = inspect()
+	
+	if success and not string.match(inspectResult.name, "turtle") then
+		if string.match(inspectResult.name, solidBlock) then
+			turtle.select(blockSlot[solidBlock])
+		elseif string.match(inspectResult.name, glassBlock) then
+			turtle.select(blockSlot[glassBlock])
+		else
+			error("this block shouldn't be here")
+		end
+		
+		if turtle.getItemCount() == 64 then
+			turtle.drop(1)
+		end
+		
+		breakBlock()
+	end
+end
+
+local function go(direction, times)
+	local move = turtle[direction and string.lower(direction) or "forward"]
+	
+	for i = 1, times or 1 do
+		while not move() do
+			safeBreakBlock(direction)
+		end
+	end
+end
+
+local function place(direction)
+	local placeBlock = turtle["place"..getActionDirection(direction)]
+	local compare = turtle["compare"..getActionDirection(direction)]
+	local slot = turtle.getSelectedSlot()
+
+	if compare() then return end
+
+	while not placeBlock() do
+		safeBreakBlock(direction)
+		turtle.select(slot)
+	end
+end
+
+local function getBlock(x, y, innerBlock, outerBlock)
+	if x - margin < 0 or x - towerWidth + margin >= 0 then
+		return outerBlock
+	end
+
+	local currentColumnNumber = math.floor((x - margin) / columnWidth)
+	local currentColumnOffset = (firstColumnOffset + currentColumnNumber * offsetIncrease) % figureHeight
+	
+	local figureWidthOffset = (x - margin) % columnWidth
+	local figureHeightOffset = (y - currentColumnOffset) % figureHeight
+	
+	if figure[figureHeightOffset + 1][figureWidthOffset + 1] == '#' then
+		return outerBlock
+	else
+		return innerBlock
+	end
+end
+
+local function refillBlock(block)
+	turtle.select(blockSlot[chest])
+	place("Up")
+	
+	turtle.select(talismanBlockSlot[block])
+	
+	for i = 1, blockCount[block] do
+		turtle.placeUp()
+		turtle.suckUp(64)
+	end
+	
+	turtle.select(blockSlot[chest])
+	turtle.digUp()
+	
+	if not findItemSlot(block) then
+		error(block.." chest is empty")
+	end
+end
+
+local function placeTowerBlock(curX, curY, curZ)
+	local innerBlock = curZ == 0 and glassBlock or "air"
+	local outerBlock = solidBlock
+	
+	local block = getBlock(curX, curY, innerBlock, outerBlock)
+	
+	if block == "air" then
+		return
+	end
+	
+	local slot = findItemSlot(block)
+	
+	if not slot then
+		refillBlock(block)
+		slot = findItemSlot(block)
+	end
+	
+	turtle.select(slot)
+	place("Down")
+end
+
+if args[1] and args[2] and args[3] then
+	startX = tonumber(args[1])
+	startY = tonumber(args[2])
+	startZ = tonumber(args[3])
+	
+	if not startX or not startY or not startZ then
+		error("args have to be numbers")
+	end
+end
+
+for y = startY, towerHeight - 1 do
+	for z = startZ, 1 do
+		local step = z == 0 and 1 or -1
+		local endX = z == 0 and towerWidth - 1 or 0
+		
+		for x = startX, endX, step do
+			placeTowerBlock(x, y, z)
+
+			if x ~= endX then
+				go()
+			end
+		end			
+		
+		turtle.turnRight()
+		go()
+		turtle.turnRight()
+		
+		startX = towerWidth - 1
+	end
+	
+	go("Up")
+	
+	startX = 0
+	startZ = 0
+end
