@@ -6,7 +6,7 @@ local columnWidth = 4
 local columnCount = 14
 local figureHeight = 8
 local margin = 1
-local towerHeight = 110
+local towerHeight = 160
 local towerWidth = columnWidth * columnCount + margin * 2
 
 local solidBlock = "quartz_block"
